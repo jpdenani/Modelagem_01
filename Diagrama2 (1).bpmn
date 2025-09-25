@@ -1,0 +1,217 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_PIX_Bitfinex_Completo" targetNamespace="http://example.com/bpmn/pix-bitfinex" exporter="bpmn-js (https://demo.bpmn.io)" exporterVersion="18.6.1">
+  <bpmn:process id="Process_PIX_Bitfinex" isExecutable="true">
+    <bpmn:laneSet id="LaneSet_Main">
+      <bpmn:lane id="Lane_Sistema" name="Sistema">
+        <bpmn:flowNodeRef>ServiceTask_GerarQRCodeAsaas</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>ServiceTask_AtualizarSaldo</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>ServiceTask_ConsultarSaldo</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>ServiceTask_CalcularRetencao</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>ServiceTask_ExecutarTransferenciaBitfinex</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>ServiceTask_RegistrarTransacaoSaida</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>ExclusiveGateway_VerificarSaldo</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>IntermediateCatchEvent_PagamentoWebhook</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_Usuario" name="Usuário">
+        <bpmn:flowNodeRef>UserTask_SolicitarRecebimentoPIX</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>UserTask_SolicitarTransferencia</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>UserTask_ConfirmarValor</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>ServiceTask_NotificarSaldoInsuficiente</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>StartEvent_SolicitacaoRecebimento</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>EndEvent_TransferenciaCancelada</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>EndEvent_TransferenciaRealizada</bpmn:flowNodeRef>
+      </bpmn:lane>
+    </bpmn:laneSet>
+    <bpmn:startEvent id="StartEvent_SolicitacaoRecebimento" name="Solicitação de Recebimento" />
+    <bpmn:sequenceFlow id="Flow_Start_To_SolicitarPIX" sourceRef="StartEvent_SolicitacaoRecebimento" targetRef="UserTask_SolicitarRecebimentoPIX" />
+    <bpmn:userTask id="UserTask_SolicitarRecebimentoPIX" name="Solicitação de Recebimento" />
+    <bpmn:sequenceFlow id="Flow_SolicitarPIX_To_GerarQR" sourceRef="UserTask_SolicitarRecebimentoPIX" targetRef="ServiceTask_GerarQRCodeAsaas" />
+    <bpmn:serviceTask id="ServiceTask_GerarQRCodeAsaas" name="Chamar API Asaas para Criar QR Code" />
+    <bpmn:sequenceFlow id="Flow_GerarQR_To_Webhook" sourceRef="ServiceTask_GerarQRCodeAsaas" targetRef="IntermediateCatchEvent_PagamentoWebhook" />
+    <bpmn:intermediateCatchEvent id="IntermediateCatchEvent_PagamentoWebhook" name="Aguardar Notificação de Pagamento (Webhook)">
+      <bpmn:messageEventDefinition id="MessageEventDef_PagamentoConfirmado" />
+    </bpmn:intermediateCatchEvent>
+    <bpmn:sequenceFlow id="Flow_Webhook_To_AtualizarSaldo" sourceRef="IntermediateCatchEvent_PagamentoWebhook" targetRef="ServiceTask_AtualizarSaldo" />
+    <bpmn:serviceTask id="ServiceTask_AtualizarSaldo" name="Atualizar Saldo no Banco de Dados">
+      <bpmn:outgoing>Flow_0jtg7zp</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:userTask id="UserTask_SolicitarTransferencia" name="Solicitação de Transferência" />
+    <bpmn:sequenceFlow id="Flow_ConsultarSaldo_To_SolicitarTransferencia" sourceRef="ServiceTask_ConsultarSaldo" targetRef="UserTask_SolicitarTransferencia" />
+    <bpmn:userTask id="UserTask_ConfirmarValor" name="Informar Valor e Confirmar" />
+    <bpmn:sequenceFlow id="Flow_SolicitarTransferencia_To_Confirmar" sourceRef="UserTask_SolicitarTransferencia" targetRef="UserTask_ConfirmarValor" />
+    <bpmn:sequenceFlow id="Flow_Confirmar_To_ConsultarSaldo" sourceRef="UserTask_ConfirmarValor" targetRef="ServiceTask_ConsultarSaldo" />
+    <bpmn:serviceTask id="ServiceTask_ConsultarSaldo" name="Consultar Saldo no Banco de Dados">
+      <bpmn:incoming>Flow_0jtg7zp</bpmn:incoming>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_ConsultarSaldo_To_Gateway" sourceRef="ServiceTask_ConsultarSaldo" targetRef="ExclusiveGateway_VerificarSaldo" />
+    <bpmn:exclusiveGateway id="ExclusiveGateway_VerificarSaldo" name="Saldo é suficiente?" />
+    <bpmn:sequenceFlow id="Flow_Gateway_Sim" sourceRef="ExclusiveGateway_VerificarSaldo" targetRef="ServiceTask_CalcularRetencao">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${saldo &gt;= valorSolicitado}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:serviceTask id="ServiceTask_CalcularRetencao" name="Calcular Retenção de 7%" />
+    <bpmn:sequenceFlow id="Flow_CalcularRetencao_To_Transferir" sourceRef="ServiceTask_CalcularRetencao" targetRef="ServiceTask_ExecutarTransferenciaBitfinex" />
+    <bpmn:serviceTask id="ServiceTask_ExecutarTransferenciaBitfinex" name="Chamar API para Executar Transferência" />
+    <bpmn:sequenceFlow id="Flow_Transferir_To_Registrar" sourceRef="ServiceTask_ExecutarTransferenciaBitfinex" targetRef="ServiceTask_RegistrarTransacaoSaida" />
+    <bpmn:serviceTask id="ServiceTask_RegistrarTransacaoSaida" name="Registrar Transação de Saída no BD" />
+    <bpmn:sequenceFlow id="Flow_Registrar_To_FimSucesso" sourceRef="ServiceTask_RegistrarTransacaoSaida" targetRef="EndEvent_TransferenciaRealizada" />
+    <bpmn:endEvent id="EndEvent_TransferenciaRealizada" name="Transferência Realizada" />
+    <bpmn:sequenceFlow id="Flow_Gateway_Nao" sourceRef="ExclusiveGateway_VerificarSaldo" targetRef="ServiceTask_NotificarSaldoInsuficiente">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${saldo &lt; valorSolicitado}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:serviceTask id="ServiceTask_NotificarSaldoInsuficiente" name="Notificar Usuário sobre Saldo Insuficiente" />
+    <bpmn:sequenceFlow id="Flow_Notificar_To_FimFalha" sourceRef="ServiceTask_NotificarSaldoInsuficiente" targetRef="EndEvent_TransferenciaCancelada" />
+    <bpmn:endEvent id="EndEvent_TransferenciaCancelada" name="Transferência Cancelada" />
+    <bpmn:sequenceFlow id="Flow_0jtg7zp" sourceRef="ServiceTask_AtualizarSaldo" targetRef="ServiceTask_ConsultarSaldo" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_PIX_Bitfinex">
+    <bpmndi:BPMNPlane id="BPMNPlane_PIX_Bitfinex" bpmnElement="Process_PIX_Bitfinex">
+      <bpmndi:BPMNShape id="LaneShape_Sistema" bpmnElement="Lane_Sistema" isHorizontal="true">
+        <dc:Bounds x="150" y="490" width="1140" height="390" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="LaneShape_Usuario" bpmnElement="Lane_Usuario" isHorizontal="true">
+        <dc:Bounds x="150" y="80" width="1140" height="410" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="StartEvent_SolicitacaoRecebimento_di" bpmnElement="StartEvent_SolicitacaoRecebimento">
+        <dc:Bounds x="180" y="370" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="164" y="406" width="69" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="UserTask_SolicitarRecebimentoPIX_di" bpmnElement="UserTask_SolicitarRecebimentoPIX">
+        <dc:Bounds x="260" y="350" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ExclusiveGateway_VerificarSaldo_di" bpmnElement="ExclusiveGateway_VerificarSaldo" isMarkerVisible="true">
+        <dc:Bounds x="1000" y="550" width="40" height="40" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="993" y="512.5" width="54" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="UserTask_SolicitarTransferencia_di" bpmnElement="UserTask_SolicitarTransferencia">
+        <dc:Bounds x="460" y="130" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="UserTask_ConfirmarValor_di" bpmnElement="UserTask_ConfirmarValor">
+        <dc:Bounds x="580" y="270" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ServiceTask_GerarQRCodeAsaas_di" bpmnElement="ServiceTask_GerarQRCodeAsaas">
+        <dc:Bounds x="300" y="610" width="140" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ServiceTask_AtualizarSaldo_di" bpmnElement="ServiceTask_AtualizarSaldo">
+        <dc:Bounds x="610" y="700" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="IntermediateCatchEvent_PagamentoWebhook_di" bpmnElement="IntermediateCatchEvent_PagamentoWebhook">
+        <dc:Bounds x="512" y="535" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="494" y="471.5" width="71" height="53" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ServiceTask_ConsultarSaldo_di" bpmnElement="ServiceTask_ConsultarSaldo">
+        <dc:Bounds x="790" y="620" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ServiceTask_CalcularRetencao_di" bpmnElement="ServiceTask_CalcularRetencao">
+        <dc:Bounds x="910" y="740" width="120" height="60" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ServiceTask_ExecutarTransferenciaBitfinex_di" bpmnElement="ServiceTask_ExecutarTransferenciaBitfinex">
+        <dc:Bounds x="1060" y="570" width="120" height="60" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ServiceTask_RegistrarTransacaoSaida_di" bpmnElement="ServiceTask_RegistrarTransacaoSaida">
+        <dc:Bounds x="1120" y="720" width="120" height="60" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ServiceTask_NotificarSaldoInsuficiente_di" bpmnElement="ServiceTask_NotificarSaldoInsuficiente">
+        <dc:Bounds x="980" y="270" width="120" height="60" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_TransferenciaCancelada_di" bpmnElement="EndEvent_TransferenciaCancelada">
+        <dc:Bounds x="962" y="370" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="949" y="410" width="67" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_TransferenciaRealizada_di" bpmnElement="EndEvent_TransferenciaRealizada">
+        <dc:Bounds x="1222" y="232" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1206" y="194.5" width="67" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_Start_To_SolicitarPIX_di" bpmnElement="Flow_Start_To_SolicitarPIX">
+        <di:waypoint x="216" y="388" />
+        <di:waypoint x="260" y="388" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_SolicitarPIX_To_GerarQR_di" bpmnElement="Flow_SolicitarPIX_To_GerarQR">
+        <di:waypoint x="380" y="420" />
+        <di:waypoint x="380" y="520" />
+        <di:waypoint x="300" y="520" />
+        <di:waypoint x="300" y="620" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ConsultarSaldo_To_SolicitarTransferencia_di" bpmnElement="Flow_ConsultarSaldo_To_SolicitarTransferencia">
+        <di:waypoint x="850" y="620" />
+        <di:waypoint x="850" y="170" />
+        <di:waypoint x="580" y="170" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_SolicitarTransferencia_To_Confirmar_di" bpmnElement="Flow_SolicitarTransferencia_To_Confirmar">
+        <di:waypoint x="580" y="170" />
+        <di:waypoint x="640" y="170" />
+        <di:waypoint x="640" y="270" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Confirmar_To_ConsultarSaldo_di" bpmnElement="Flow_Confirmar_To_ConsultarSaldo">
+        <di:waypoint x="700" y="340" />
+        <di:waypoint x="700" y="432" />
+        <di:waypoint x="850" y="432" />
+        <di:waypoint x="850" y="620" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ConsultarSaldo_To_Gateway_di" bpmnElement="Flow_ConsultarSaldo_To_Gateway">
+        <di:waypoint x="850" y="620" />
+        <di:waypoint x="850" y="570" />
+        <di:waypoint x="1000" y="570" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Gateway_Sim_di" bpmnElement="Flow_Gateway_Sim">
+        <di:waypoint x="1020" y="590" />
+        <di:waypoint x="1020" y="665" />
+        <di:waypoint x="970" y="665" />
+        <di:waypoint x="970" y="740" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Registrar_To_FimSucesso_di" bpmnElement="Flow_Registrar_To_FimSucesso">
+        <di:waypoint x="1240" y="730" />
+        <di:waypoint x="1240" y="268" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Gateway_Nao_di" bpmnElement="Flow_Gateway_Nao">
+        <di:waypoint x="1040" y="570" />
+        <di:waypoint x="1040" y="330" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Notificar_To_FimFalha_di" bpmnElement="Flow_Notificar_To_FimFalha">
+        <di:waypoint x="1040" y="330" />
+        <di:waypoint x="1040" y="350" />
+        <di:waypoint x="980" y="350" />
+        <di:waypoint x="980" y="370" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Transferir_To_Registrar_di" bpmnElement="Flow_Transferir_To_Registrar">
+        <di:waypoint x="1120" y="630" />
+        <di:waypoint x="1120" y="675" />
+        <di:waypoint x="1180" y="675" />
+        <di:waypoint x="1180" y="720" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_CalcularRetencao_To_Transferir_di" bpmnElement="Flow_CalcularRetencao_To_Transferir">
+        <di:waypoint x="1030" y="770" />
+        <di:waypoint x="1045" y="770" />
+        <di:waypoint x="1045" y="600" />
+        <di:waypoint x="1060" y="600" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Webhook_To_AtualizarSaldo_di" bpmnElement="Flow_Webhook_To_AtualizarSaldo">
+        <di:waypoint x="530" y="571" />
+        <di:waypoint x="530" y="600" />
+        <di:waypoint x="670" y="600" />
+        <di:waypoint x="670" y="700" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_GerarQR_To_Webhook_di" bpmnElement="Flow_GerarQR_To_Webhook">
+        <di:waypoint x="370" y="610" />
+        <di:waypoint x="370" y="552" />
+        <di:waypoint x="512" y="552" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0jtg7zp_di" bpmnElement="Flow_0jtg7zp">
+        <di:waypoint x="730" y="740" />
+        <di:waypoint x="760" y="740" />
+        <di:waypoint x="760" y="690" />
+        <di:waypoint x="790" y="690" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
